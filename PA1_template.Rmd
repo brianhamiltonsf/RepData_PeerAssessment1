@@ -1,25 +1,128 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
+title: "PA1_template.Rmd"
+author: "Brian Hamilton"
 output: 
+  md_document:
+    variant: markdown_github
   html_document:
     keep_md: true
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
-## Loading and preprocessing the data
+```{r libraries}
+library(dplyr, warn.conflicts = FALSE)
+library(ggplot2)
+```
+
+The first step is to load and preprocess the data.
+
+```{r load_preprocess}
+temp <- tempfile()
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip", temp)
+file <- unzip(temp)
+data <- read.csv(file, colClasses = c("numeric", "character", "integer"))
+data_complete <- data[complete.cases(data),]
+data_nozero <- filter(data, steps > 0)
+```
+
+We then create a histogram of the total number of steps taken each day, and calculate the mean and median total number of steps taken per day. 
+
+```{r}
+days <- group_by(data_complete, date)
+dailytotal <- as.data.frame(summarize(days, total = sum(steps)))
+hist(dailytotal$total, xlab="Total steps per day", main="Histogam of total steps per day")
+data_output <- as.data.frame(summarize(days, mean_steps = mean(steps), median_steps = median(steps))) 
+print(data_output)
+```
+
+Next we look for the average daily activity pattern. We create a time series plot of the average number of steps taken per 5-minute interval, across all days. 
+
+```{r}
+intervals <- group_by(data_complete, interval)
+interval_means <- as.data.frame(summarize(intervals, mean = mean(steps)))
+with(interval_means, plot(interval, mean, type="l", main="Average # of steps per interval"))
+```
+
+Then we find the interval with the maximum average number of steps.
+
+```{r}
+interval_means[interval_means$mean == max(interval_means$mean), "interval"]
+```
+
+Next we want to determine the number of missing values in the steps column.
+
+```{r}
+sum(is.na(data$steps))
+```
+
+We will create a new data frame and replace all missing values with the mean value for the interval.
+
+```{r}
+data2 <- data.frame(data)
+for(row in 1:nrow(data2)){ 
+  if(is.na(data2[row, "steps"])){
+    rowinterval <- data2[row, "interval"]
+    meansteps <- interval_means[interval_means$interval == rowinterval, "mean"]
+    data2[row, "steps"] = meansteps
+  }
+}
+```
+
+Once again we will create a histogram of the total number of steps taken each day, and calculate the mean and median total number of steps taken per day. This time we will use the new data set with missing values replaced by the mean value for the interval.
+
+```{r}
+days2 <- group_by(data2, date)
+dailytotal2 <- as.data.frame(summarize(days2, total = sum(steps)))
+hist(dailytotal2$total, xlab="Total steps per day", main="Histogam of total steps per day")
+data2_output <- as.data.frame(summarize(days2, mean_steps = mean(steps), median_steps = median(steps))) 
+print(data2_output)
+```
+
+Now we will compare the new data set with the original data set to understand the impact of replacing missing values with the mean value for the interval.
+
+```{r}
+compare <- data.frame(data2_output, stringsAsFactors = FALSE)
+names(compare) <- c("date", "new_mean", "new_median")
+original_mean <- rep("", 61)
+original_median <- rep("", 61)
+compare <- cbind(compare, original_mean)
+compare <- cbind(compare, original_median)
+compare %>% mutate_if(is.factor, as.character) -> compare
+for(row in 1:nrow(compare)){
+  if(compare[row, "date"] %in% data_output$date){
+    compare_date <- compare[row, "date"]
+    compare[row, "original_mean"] = round(data_output[data_output$date == compare_date,"mean_steps"], 3)
+    compare[row, "original_median"] = round(data_output[data_output$date == compare_date, "median_steps"], 3)
+  } else {
+    compare[row, "original_mean"] = "---"
+    compare[row, "original_median"] = "---"
+  }
+}
+compare$new_mean <- round(compare$new_mean, 3)
+compare$new_median <- round(compare$new_median, 3)
+print(compare)
+```
+
+The table demonstrates adding the missing values gives us data for dates that were missing from the original analysis.
+
+Finally we are going to use plots to see if there are differences between weekdays and weekends. 
+
+```{r}
+weekend <- c("Saturday", "Sunday")
+weekdays <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+data2$date <- as.Date(data2$date)
+weekdays_df <- filter(data2, weekdays(date) %in% weekdays)
+weekend_df <- filter(data2, weekdays(date) %in% weekend)
+weekdays_grouped <- group_by(weekdays_df, interval)
+weekend_grouped <- group_by(weekend_df, interval)
+weekdays_intervals <- as.data.frame(summarize(weekdays_grouped, mean = mean(steps)))
+weekend_intervals <- as.data.frame(summarize(weekend_grouped, mean = mean(steps)))
+par(mfrow = c(2, 1))
+with(weekdays_intervals, plot(interval, mean, type="l", main="Weekdays", ylim=c(0,200)))
+with(weekend_intervals, plot(interval, mean, type="l", main="Weekends", ylim=c(0,200)))
+```
 
 
-
-## What is mean total number of steps taken per day?
-
-
-
-## What is the average daily activity pattern?
-
-
-
-## Imputing missing values
-
-
-
-## Are there differences in activity patterns between weekdays and weekends?
